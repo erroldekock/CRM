@@ -1,21 +1,18 @@
 <?php
 
-require "Include/Config.php";
-require "Include/Functions.php";
-require "Service/NoteService.php";
-require "Service/FamilyService.php";
+require 'Include/Config.php';
+require 'Include/Functions.php';
 
-$noteService = new NoteService();
-$familyService = new FamilyService();
+use ChurchCRM\FamilyQuery;
+use ChurchCRM\Utils\InputUtils;
 
 //Get the FamilyID out of the querystring
-$iFamilyID = FilterInput($_GET["FamilyID"], 'int');
+$iFamilyID = InputUtils::LegacyFilterInput($_GET['FamilyID'], 'int');
 
-$noteService->addNote(0, $iFamilyID, 0, "Family Data Verified", "verify");
+$family =  FamilyQuery::create()
+    ->findOneById($iFamilyID);
 
-$familyURI = $familyService->getViewURI($iFamilyID);
+$family->verify();
 
-Header("Location: " . $familyURI);
+header('Location: '.$family->getViewURI());
 exit;
-
-

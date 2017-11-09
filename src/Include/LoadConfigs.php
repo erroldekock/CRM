@@ -9,187 +9,163 @@
  *  Copyright 2001-2005 Phillip Hullquist, Deane Barker, Chris Gebhardt,
  *                      Michael Wilt, Timothy Dearborn
  *
- *
- *  LICENSE:
- *  (C) Free Software Foundation, Inc.
- *
- *  ChurchCRM is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful, but
- *  WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- *  General Public License for more details.
- *
- *  http://www.gnu.org/licenses
- *
- *  This file best viewed in a text editor with tabs stops set to 4 characters.
- *  Please configure your editor to use soft tabs (4 spaces for a tab) instead
- *  of hard tab characters.
- *
- ******************************************************************************/
-if (!function_exists("mysql_failure")) {
-  function mysql_failure($message)
-  {
-    require("Include/HeaderNotLoggedIn.php");
-    ?>
-    <div class='container'>
-      <h3>ChurchCRM – Setup failure</h3>
+ *******************************************************************************/
 
-      <div class='alert alert-danger text-center' style='margin-top: 20px;'>
-        <?= $message ?>
-      </div>
+require_once dirname(__FILE__).'/../vendor/autoload.php';
+
+use ChurchCRM\ConfigQuery;
+use ChurchCRM\dto\LocaleInfo;
+use ChurchCRM\dto\SystemConfig;
+use ChurchCRM\dto\SystemURLs;
+use ChurchCRM\Service\SystemService;
+use ChurchCRM\SQLUtils;
+use ChurchCRM\Version;
+use Monolog\Handler\StreamHandler;
+use Monolog\Logger;
+use Propel\Runtime\Connection\ConnectionManagerSingle;
+use Propel\Runtime\Propel;
+use ChurchCRM\Utils\LoggerUtils;
+
+function system_failure($message, $header = 'Setup failure')
+{
+    require 'Include/HeaderNotLoggedIn.php'; ?>
+    <div class='container'>
+        <h3>ChurchCRM – <?= _($header) ?></h3>
+        <div class='alert alert-danger text-center' style='margin-top: 20px;'>
+            <?= gettext($message) ?>
+        </div>
     </div>
     <?php
-    require("Include/FooterNotLoggedIn.php");
+    require 'Include/FooterNotLoggedIn.php';
     exit();
-  }
 }
 
-// Establish the database connection
-$cnInfoCentral = mysql_connect($sSERVERNAME, $sUSER, $sPASSWORD)
-or mysql_failure("Could not connect to MySQL on <strong>" . $sSERVERNAME . "</strong> as <strong>" . $sUSER . "</strong>. Please check the settings in <strong>include/Config.php</strong>.");
-
-mysql_select_db($sDATABASE)
-or mysql_failure("Could not connect to the MySQL database <strong>" . $sDATABASE . "</strong>. Please check the settings in <strong>include/Config.php</strong>.");
-
-$sql = "SHOW TABLES FROM `$sDATABASE`";
-$tablecheck = mysql_num_rows(mysql_query($sql));
-
-if (!$tablecheck) {
-  $query = '';
-  $restoreQueries = file('mysql/install/install.sql', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-  foreach ($restoreQueries as $line) {
-    if ($line != '' && strpos($line, '--') === false) {
-      $query .= " $line";
-      if (substr($query, -1) == ';') {
-        mysql_query($query);
-        $query = '';
-      }
-    }
-  }
+function buildConnectionManagerConfig($sSERVERNAME, $sDATABASE, $sUSER, $sPASSWORD, $dbClassName, $dbPort = '3306')
+{
+    return [
+        'dsn' => 'mysql:host=' . $sSERVERNAME . ';port='.$dbPort.';dbname=' . $sDATABASE,
+        'user' => $sUSER,
+        'password' => $sPASSWORD,
+        'settings' => [
+            'charset' => 'utf8mb4',
+            'queries' => ["SET sql_mode=(SELECT REPLACE(REPLACE(@@sql_mode,'ONLY_FULL_GROUP_BY',''),'NO_ZERO_DATE',''))"],
+        ],
+        'classname' => $dbClassName,
+        'model_paths' => [
+            0 => 'src',
+            1 => 'vendor',
+        ],
+    ];
 }
+
+try {
+    SystemURLs::init($sRootPath, $URL, dirname(dirname(__FILE__)));
+} catch (\Exception $e) {
+    system_failure($e->getMessage());
+}
+
+SystemURLs::checkAllowedURL($bLockURL, $URL);
+
+$cnInfoCentral = mysqli_connect($sSERVERNAME, $sUSER, $sPASSWORD)
+or system_failure('Could not connect to MySQL on <strong>'.$sSERVERNAME.'</strong> as <strong>'.$sUSER.'</strong>. Please check the settings in <strong>Include/Config.php</strong>.<br/>MySQL Error: '.mysqli_error($cnInfoCentral));
+
+mysqli_set_charset($cnInfoCentral, 'utf8mb4');
+
+mysqli_select_db($cnInfoCentral, $sDATABASE)
+or system_failure('Could not connect to the MySQL database <strong>'.$sDATABASE.'</strong>. Please check the settings in <strong>Include/Config.php</strong>.<br/>MySQL Error: '.mysqli_error($cnInfoCentral));
 
 // Initialize the session
-session_name('CRM@' . $sRootPath);
+session_name('CRM@'.SystemURLs::getRootPath());
 session_start();
 
-// Avoid consecutive slashes when $sRootPath = '/'
-if (strlen($sRootPath) < 2) $sRootPath = '';
 
-// Some webhosts make it difficult to use DOCUMENT_ROOT.  Define our own!
-$sDocumentRoot = dirname(dirname(__FILE__));
+// ==== ORM
+$dbClassName = "\\Propel\\Runtime\\Connection\\ConnectionWrapper";
 
-$version = mysql_fetch_row(mysql_query("SELECT version()"));
 
-if (substr($version[0], 0, 3) >= "4.1") {
-  mysql_query("SET NAMES 'utf8'");
+$serviceContainer = Propel::getServiceContainer();
+$serviceContainer->checkVersion('2.0.0-dev');
+$serviceContainer->setAdapterClass('default', 'mysql');
+$manager = new ConnectionManagerSingle();
+$manager->setConfiguration(buildConnectionManagerConfig($sSERVERNAME, $sDATABASE, $sUSER, $sPASSWORD, $dbClassName));
+$manager->setName('default');
+$serviceContainer->setConnectionManager('default', $manager);
+$serviceContainer->setDefaultDatasource('default');
+
+$connection = Propel::getConnection();
+$query = "SHOW TABLES FROM `$sDATABASE`";
+$statement = $connection->prepare($query);
+$resultset = $statement->execute();
+$results = $statement->fetchAll(\PDO::FETCH_ASSOC);
+
+if (count($results) == 0) {
+    $systemService = new SystemService();
+    $version = new Version();
+    $version->setVersion($systemService->getInstalledVersion());
+    $version->setUpdateStart(new DateTime());
+    SQLUtils::sqlImport(SystemURLs::getDocumentRoot().'/mysql/install/Install.sql', $connection);
+    $version->setUpdateEnd(new DateTime());
+    $version->save();
 }
 
 // Read values from config table into local variables
 // **************************************************
-$sSQL = "SELECT cfg_name, IFNULL(cfg_value, cfg_default) AS value "
-  . "FROM config_cfg WHERE cfg_section='General'";
-$rsConfig = mysql_query($sSQL);         // Can't use RunQuery -- not defined yet
-if ($rsConfig) {
-  while (list($cfg_name, $value) = mysql_fetch_row($rsConfig)) {
-    $$cfg_name = $value;
-  }
-}
+
+SystemConfig::init(ConfigQuery::create()->find());
+
+// enable logs if we are in debug mode
+// **************************************************
+
+// PHP Logs
+ini_set('log_errors', 1);
+ini_set('error_log', LoggerUtils::buildLogFilePath("php"));
+
+// APP Logs
+$logger = LoggerUtils::getAppLogger();
+
+// ORM Logs
+$ormLogger = new Logger('ormLogger');
+$dbClassName = "\\Propel\\Runtime\\Connection\\DebugPDO";
+$manager->setConfiguration(buildConnectionManagerConfig($sSERVERNAME, $sDATABASE, $sUSER, $sPASSWORD, $dbClassName));
+$ormLogger->pushHandler(new StreamHandler(LoggerUtils::buildLogFilePath("orm"), LoggerUtils::getLogLevel()));
+$serviceContainer->setLogger('defaultLogger', $ormLogger);
+
 
 if (isset($_SESSION['iUserID'])) {      // Not set on Login.php
-  // Load user variables from user config table.
-  // **************************************************
-  $sSQL = "SELECT ucfg_name, ucfg_value AS value "
-    . "FROM userconfig_ucfg WHERE ucfg_per_ID='" . $_SESSION['iUserID'] . "'";
-  $rsConfig = mysql_query($sSQL);     // Can't use RunQuery -- not defined yet
-  if ($rsConfig) {
-    while (list($ucfg_name, $value) = mysql_fetch_row($rsConfig)) {
-      $$ucfg_name = $value;
-      $_SESSION[$ucfg_name] = $value;
+    // Load user variables from user config table.
+    // **************************************************
+    $sSQL = 'SELECT ucfg_name, ucfg_value AS value '
+        ."FROM userconfig_ucfg WHERE ucfg_per_ID='".$_SESSION['iUserID']."'";
+    $rsConfig = mysqli_query($cnInfoCentral, $sSQL);     // Can't use RunQuery -- not defined yet
+    if ($rsConfig) {
+        while (list($ucfg_name, $value) = mysqli_fetch_row($rsConfig)) {
+            $$ucfg_name = $value;
+            $_SESSION[$ucfg_name] = $value;
+        }
     }
-  }
 }
 
 $sMetaRefresh = '';  // Initialize to empty
 
-require_once("winlocalelist.php");
-
-if (!function_exists("stripos")) {
-  function stripos($str, $needle)
-  {
-    return strpos(strtolower($str), strtolower($needle));
-  }
+if (SystemConfig::getValue('sTimeZone')) {
+    date_default_timezone_set(SystemConfig::getValue('sTimeZone'));
 }
 
-if (!(stripos(php_uname('s'), "windows") === false)) {
-//  $sLanguage = $lang_map_windows[strtolower($sLanguage)];
-  $sLang_Code = $lang_map_windows[strtolower($sLanguage)];
-} else {
-  $sLang_Code = $sLanguage;
-}
-putenv("LANG=$sLang_Code");
-setlocale(LC_ALL, $sLang_Code, $sLang_Code . ".utf8", $sLang_Code . ".UTF8", $sLang_Code . ".utf-8", $sLang_Code . ".UTF-8");
-
-if (isset($sTimeZone)) {
-  date_default_timezone_set($sTimeZone);
-}
+$localeInfo = new LocaleInfo(SystemConfig::getValue('sLanguage'));
+setlocale(LC_ALL, $localeInfo->getLocale());
 
 // Get numeric and monetary locale settings.
-$aLocaleInfo = localeconv();
+$aLocaleInfo = $localeInfo->getLocaleInfo();
 
 // This is needed to avoid some bugs in various libraries like fpdf.
+// http://www.velanhotels.com/fpdf/FAQ.htm#6
 setlocale(LC_NUMERIC, 'C');
 
-// patch some missing data for Italian.  This shouldn't be necessary!
-if ($sLanguage == 'it_IT') {
-  $aLocaleInfo['thousands_sep'] = '.';
-  $aLocaleInfo['frac_digits'] = '2';
-}
+$domain = 'messages';
+$sLocaleDir = SystemURLs::getDocumentRoot().'/locale/textdomain';
 
-if (function_exists('bindtextdomain')) {
-  $domain = 'messages';
+bind_textdomain_codeset($domain, 'UTF-8');
+bindtextdomain($domain, $sLocaleDir);
+textdomain($domain);
 
-  $sLocaleDir = 'locale';
-  if (!is_dir($sLocaleDir))
-    $sLocaleDir = '../' . $sLocaleDir;
-
-  bind_textdomain_codeset($domain, 'UTF-8');
-  bindtextdomain($domain, $sLocaleDir);
-  textdomain($domain);
-} else {
-  if ($sLanguage != 'en_US') {
-    // PHP array version of the l18n strings
-    $sLocaleMessages = "locale/$sLanguage/LC_MESSAGES/messages.php";
-
-    if (!is_readable($sLocaleMessages))
-      $sLocaleMessages = "../$sLocaleMessages";
-
-    require($sLocaleMessages);
-
-    // replacement implementation of gettext for broken installs
-    function gettext($text)
-    {
-      global $locale;
-
-      if (!empty($locale[$text]))
-        return $locale[$text];
-      else
-        return $text;
-    }
-  } else {
-    // dummy gettext function
-    function gettext($text)
-    {
-      return $text;
-    }
-  }
-
-  function _($text)
-  {
-    return gettext($text);
-  }
-}
 ?>

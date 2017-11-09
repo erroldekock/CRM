@@ -7,17 +7,17 @@ $("document").ready(function()
     if(groupPropertyAction == "enableGroupProps")
     {
       $("#groupSpecificPropertiesModal").modal("show");
-      $("#gsproperties-label").text("Confirm Enable Group Specific Properties");
-      $("#groupSpecificPropertiesModal .modal-body span").text("This will create a group-specific properties table for this group.  You should then add needed properties with the Group-Specific Properties Form Editor.");
-      $("#setgroupSpecificProperties").text("Enable Group Specific Properties");
+      $("#gsproperties-label").text(i18next.t('Confirm Enable Group Specific Properties'));
+      $("#groupSpecificPropertiesModal .modal-body span").text(i18next.t('This will create a group-specific properties table for this group.  You should then add needed properties with the Group-Specific Properties Form Editor.'));
+      $("#setgroupSpecificProperties").text(i18next.t('Enable Group Specific Properties'));
       $("#setgroupSpecificProperties").data("action",1);
     }
     else
     {
       $("#groupSpecificPropertiesModal").modal("show");
-      $("#gsproperties-label").text("Confirm Disable Group Specific Properties");
-      $("#groupSpecificPropertiesModal .modal-body span").text("Are you sure you want to remove the group-specific person properties?  All group member properties data will be lost!");
-      $("#setgroupSpecificProperties").text("Disable Group Specific Properties");
+      $("#gsproperties-label").text(i18next.t('Confirm Disable Group Specific Properties'));
+      $("#groupSpecificPropertiesModal .modal-body span").text(i18next.t('Are you sure you want to remove the group-specific person properties?  All group member properties data will be lost!'));
+      $("#setgroupSpecificProperties").text(i18next.t('Disable Group Specific Properties'));
       $("#setgroupSpecificProperties").data("action",0);
     }
   });
@@ -25,21 +25,21 @@ $("document").ready(function()
   $("#setgroupSpecificProperties").click(function(e)
   {
    var action = $("#setgroupSpecificProperties").data("action");
-   console.log(action);
      $.ajax({
       method: "POST",
       url: window.CRM.root + "/api/groups/" + groupID + "/setGroupSpecificPropertyStatus",
-      data: '{"GroupSpecificPropertyStatus":"' + action + '"}'
+       data: '{"GroupSpecificPropertyStatus":"' + action + '"}',
+       contentType: "application/json; charset=utf-8",
+       dataType: "json"
     }).done(function(data)
     {
-      console.log(data);
       location.reload(); // this shouldn't be necessary
     });
   });
 
 
   $("#selectGroupIDDiv").hide();
-          $("#cloneGroupRole").click(function(e)
+  $("#cloneGroupRole").click(function(e)
   {
     if(e.target.checked)
       $("#selectGroupIDDiv").show();
@@ -63,10 +63,19 @@ $("document").ready(function()
     $.ajax({
       method: "POST",
       url: window.CRM.root + "/api/groups/" + groupID,
-      data: JSON.stringify(formData)
+      data: JSON.stringify(formData),
+      contentType: "application/json; charset=utf-8",
+      dataType: "json"
     }).done(function(data)
     {
-      window.location.href = CRM.root + "/GroupList.php";
+    	if (data.groupType == i18next.t("Sunday School"))
+    	{
+	      window.location.href = CRM.root + "/sundayschool/SundaySchoolDashboard.php";
+	    }
+	    else
+	    {
+	    	window.location.href = CRM.root + "/GroupList.php";
+	    }
     });
 
   });
@@ -78,7 +87,9 @@ $("document").ready(function()
     $.ajax({
       method: "POST",
       url: window.CRM.root + "/api/groups/" + groupID + "/roles",
-      data: '{"roleName":"' + newRoleName + '"}'
+      data: '{"roleName":"' + newRoleName + '"}',
+      contentType: "application/json; charset=utf-8",
+      dataType: "json"
     }).done(function(data)
     {
       var newRole = data.newRole;
@@ -95,14 +106,14 @@ $("document").ready(function()
   $(document).on('click', '.deleteRole', function(e)
   {
     var roleID = e.currentTarget.id.split("-")[1];
-
-    console.log("deleting group role: " + roleID);
     $.ajax({
-      method: "DELETE",
-      url: window.CRM.root + "/api/groups/" + groupID + "/roles/" + roleID
+      method: "POST",
+      url: window.CRM.root + "/api/groups/" + groupID + "/roles/" + roleID,
+      encode: true,
+      data: {"_METHOD":"DELETE"},
+      dataType: "json"
     }).done(function(data)
     {
-      console.log(data);
       dataT.clear();
       dataT.rows.add(data);
       if(roleID == defaultRoleID)        // if we delete the default group role, set the default group role to 1 before we tell the table to re-render so that the buttons work correctly
@@ -124,11 +135,9 @@ $("document").ready(function()
     {
       if(data.lst_OptionID == roleID)
       {
-        console.log(data);
         return true;
       }
     }, 2).data(); //get the sequence number of the selected role
-    console.log("current sequence: " + currentRoleSequence);
     if(roleSequenceAction == "roleUp")
     {
       newRoleSequence = Number(currentRoleSequence) - 1;  //decrease the role's sequence number
@@ -137,8 +146,7 @@ $("document").ready(function()
     {
       newRoleSequence = Number(currentRoleSequence) + 1; // increase the role's sequenc number
     }
-    //try
-    //{
+   
     replaceRow = dataT.row(function(idx, data, node)
     {
       if(data.lst_OptionSequence == newRoleSequence)
@@ -146,19 +154,11 @@ $("document").ready(function()
         return true;
       }
     });
-    console.log("------------");
     var d = replaceRow.data();
-    console.log(d);
     d.lst_OptionSequence = currentRoleSequence;
     setGroupRoleOrder(groupID, d.lst_OptionID, d.lst_OptionSequence);
-    console.log(d);
     replaceRow.data(d);
-    console.log("************");
-    //}
-    //catch(err)
-    //{
-    //   console.log("no cells to replace - something was funky.");
-    //}
+   
     dataT.cell(function(idx, data, node)
     {
       if(data.lst_OptionID == roleID)
@@ -180,7 +180,9 @@ $("document").ready(function()
     $.ajax({
       method: "POST",
       url: window.CRM.root + "/api/groups/" + groupID + "/roles/" + roleID,
-      data: '{"groupRoleName":"' + groupRoleName + '"}'
+      data: '{"groupRoleName":"' + groupRoleName + '"}',
+      contentType: "application/json; charset=utf-8",
+      dataType: "json"
     }).done(function(data)
     {
     });
@@ -189,12 +191,13 @@ $("document").ready(function()
 
   $(document).on('click', '.defaultRole', function(e)
   {
-    console.log(e);
     var roleID = e.target.id.split("-")[1];
     $.ajax({
       method: "POST",
       url: window.CRM.root + "/api/groups/" + groupID + "/defaultRole",
-      data: '{"roleID":"' + roleID + '"}'
+      data: '{"roleID":"' + roleID + '"}',
+      contentType: "application/json; charset=utf-8",
+      dataType: "json"
     }).done(function(data)
     {
       defaultRoleID = roleID; //update the local variable representing the default role id
@@ -204,38 +207,46 @@ $("document").ready(function()
   });
 
   dataT = $("#groupRoleTable").DataTable({
+   "language": {
+      "url": window.CRM.plugin.dataTable.language.url
+    },
     data: groupRoleData,
     columns: [
       {
         width: 'auto',
-        title: 'Role Name',
+        title: i18next.t("Role Name"),
         data: 'lst_OptionName',
         render: function(data, type, full, meta)
         {
           if(type === 'display')
-            return '<input type="text" class="roleName" id="roleName-' + full.lst_OptionID + '" value="' + data + '">';
+          {
+          	if (data === 'Student' || data === 'Teacher')
+	            return '<input type="text" class="roleName" id="roleName-' + full.lst_OptionID + '" value="' + i18next.t(data) + '" readonly>';
+	          else
+	          	return '<input type="text" class="roleName" id="roleName-' + full.lst_OptionID + '" value="' + data + '">';
+          }
           else
             return data;
         }
       },
       {
         width: 'auto',
-        title: 'Make Default',
+        title: i18next.t("Make Default"),
         render: function(data, type, full, meta)
         {
           if(full.lst_OptionID == defaultRoleID)
           {
-            return "<strong><i class=\"fa fa-check\"></i> Default</strong>";
+            return "<strong><i class=\"fa fa-check\"></i>"+ i18next.t("Default")+"</strong>";
           }
           else
           {
-            return '<button type="button" id="defaultRole-' + full.lst_OptionID + '" class="btn btn-success defaultRole">Default</button>';
+            return '<button type="button" id="defaultRole-' + full.lst_OptionID + '" class="btn btn-success defaultRole">'+i18next.t("Default")+'</button>';
           }
         }
       },
       {
         width: '200px',
-        title: 'Sequence',
+        title: i18next.t("Sequence"),
         data: 'lst_OptionSequence',
         className: "dt-body-center",
         render: function(data, type, full, meta)
@@ -262,10 +273,13 @@ $("document").ready(function()
       },
       {
         width: 'auto',
-        title: 'Delete',
+        title: i18next.t("Delete"),
         render: function(data, type, full, meta)
         {
-          return '<button type="button" id="roleDelete-' + full.lst_OptionID + '" class="btn btn-danger deleteRole">Delete</button>';
+        	if (full.lst_OptionName === 'Student' || full.lst_OptionName === 'Teacher' )
+	          return '<button type="button" id="roleDelete-' + full.lst_OptionID + '" class="btn btn-danger deleteRole" disabled>'+i18next.t("Delete")+'</button>';
+	        else
+	          return '<button type="button" id="roleDelete-' + full.lst_OptionID + '" class="btn btn-danger deleteRole">'+i18next.t("Delete")+'</button>';
 
         }
       },
@@ -282,7 +296,9 @@ function setGroupRoleOrder(groupID, roleID, groupRoleOrder)
   $.ajax({
     method: "POST",
     url: window.CRM.root + "/api/groups/" + groupID + "/roles/" + roleID,
-    data: '{"groupRoleOrder":"' + groupRoleOrder + '"}'
+    data: '{"groupRoleOrder":"' + groupRoleOrder + '"}',
+    contentType: "application/json; charset=utf-8",
+    dataType: "json"
   }).done(function(data)
   {
   });

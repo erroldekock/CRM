@@ -1,99 +1,77 @@
 <?php
-require "Include/Config.php";
-require "Include/Functions.php";
-require "Service/EventService.php";
+require 'Include/Config.php';
+require 'Include/Functions.php';
+use ChurchCRM\Service\CalendarService;
 
-$eventService = new EventService();
-
-$birthDays = $personService->getBirthDays();
-$crmEvents = $eventService->getEvents();
-
-$events = array();
-$year = date("Y");
-
-foreach ($birthDays as $birthDay) {
-  $event = array(
-             "title" => $birthDay["firstName"] . " " . $birthDay["lastName"],
-             "start" => $year . "-" . $birthDay["birthMonth"] . "-" . $birthDay["birthDay"],
-             "url"   => $birthDay["uri"],
-             "backgroundColor" => '#f56954', //red
-             "borderColor"     => '#f56954', //red
-             "allDay" => true
-           );
-
-  array_push($events, $event);
-}
-
-foreach ($crmEvents as $evnt) {
-  $event = array(
-    "title" => $evnt["title"],
-    "start" => $evnt["start"],
-    "end" => $evnt["end"],
-    "backgroundColor" => '#f39c12', //red
-    "borderColor"     => '#f39c12', //red
-    "allDay" => true
-  );
-  array_push($events, $event);
-}
-
+$calenderService = new CalendarService();
+use ChurchCRM\dto\SystemURLs;
 
 // Set the page title and include HTML header
-$sPageTitle = gettext("Church Calendar");
-require "Include/Header.php"; ?>
+$sPageTitle = gettext('Church Calendar');
+require 'Include/Header.php'; ?>
 
-<link rel="stylesheet" href="<?= $sRootPath ?>/skin/adminlte/plugins/fullcalendar/fullcalendar.min.css">
-<link rel="stylesheet" href="<?= $sRootPath ?>/skin/adminlte/plugins/fullcalendar/fullcalendar.print.css" media="print">
-
-<div class="col-lg-12">
-  <div class="box box-primary">
-    <div class="box-body">
-      <div class="fc-event-container fc-day-grid-event" style="background-color:#f56954;border-color:#f56954;color: white; width: 100px">
-          <div class="fc-title">Birthdays</div>
-      </div>
-      <div class="fc-event-container fc-day-grid-event" style="background-color:#f39c12;border-color:#f39c12;color: white; width: 100px">
-          <div class="fc-title">Events</div>
-      </div>
+<style>
+    @media print {
+        a[href]:after {
+            content: none !important;
+        }
+    }
+    .fc-other-month .fc-day-number {
+      display:none;
+    }
+</style>
+<div class="col">
+    <div class="box box-primary">
+        <div class="box-body">
+            <?php foreach ($calenderService->getEventTypes() as $type) {
+    ?>
+                <div class="col-xs-3 fc-event-container fc-day-grid-event"
+                     style="background-color:<?= $type['backgroundColor'] ?>;border-color:<?= $type['backgroundColor'] ?>;color: white; ">
+                    <div class="fc-title"><?= gettext($type['Name']) ?></div>
+                </div>
+                <?php
+} ?>
+        </div>
     </div>
-  </div>
 </div>
 
-<div class="col-lg-12">
-  <div class="box box-info">
-    <div class="box-body no-padding">
-      <!-- THE CALENDAR -->
-      <div id="calendar"></div>
+<div class="col">
+    <div class="box box-info">
+        <div class="box-body no-padding">
+            <!-- THE CALENDAR -->
+            <div id="calendar"></div>
+        </div>
+        <!-- /.box-body -->
     </div>
-    <!-- /.box-body -->
-  </div>
-  <!-- /. box -->
+    <!-- /. box -->
 </div>
 <!-- /.col -->
 
 &nbsp;
 
 <!-- fullCalendar 2.2.5 -->
-<script src="<?= $sRootPath ?>/skin/adminlte/plugins/daterangepicker/moment.min.js"></script>
-<script src="<?= $sRootPath ?>/skin/adminlte/plugins/fullcalendar/fullcalendar.min.js"></script>
 <script>
-  $(function () {
-    /* initialize the calendar
-     -----------------------------------------------------------------*/
-    $('#calendar').fullCalendar({
-      header: {
-        left: 'prev,next today',
-        center: 'title',
-        right: 'month,agendaWeek,agendaDay'
-      },
-      buttonText: {
-        today: 'today',
-        month: 'month',
-        week: 'week',
-        day: 'day'
-      },
-      //Random default events
-      events: <?= json_encode($events) ?>
+    $(document).ready(function () {
+        /* initialize the calendar
+         -----------------------------------------------------------------*/
+        $('#calendar').fullCalendar({
+            header: {
+                left: 'prev,next today',
+                center: 'title',
+                right: 'month,basicDay,listMonth'
+            },
+            height: 500,
+            locale: '<?= $localeInfo->getLanguageCode() ?>',
+            events: window.CRM.root + '/api/calendar/events',
+            eventRender: function (event, element, view) {
+                var evStart = moment(view.intervalStart).subtract(1, 'days');
+                var evEnd = moment(view.intervalEnd).subtract(1, 'days');
+                if (!event.start.isAfter(evStart) || event.start.isAfter(evEnd)) {
+                    return false;
+                }
+            }
+        });
     });
- });
 </script>
 
-<?php require "Include/Footer.php"; ?>
+<?php require 'Include/Footer.php'; ?>
